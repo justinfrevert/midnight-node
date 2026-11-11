@@ -58,6 +58,8 @@ impl pallet_ethereum_bridge::ValidateEscrow for CanonicalEscrow {
 	}
 }
 impl pallet_ethereum_bridge::Config for Runtime {
+	type RetainOutboundHistory =
+		frame_support::traits::ConstBool<{ cfg!(feature = "hyperbridge-poc") }>;
 	type Verifier = EthereumBeaconClient;
 	type Ledger = MidnightSystem;
 	type EscrowValidator = CanonicalEscrow;
@@ -180,7 +182,9 @@ impl ProcessMessage for BridgeQueue {
 pub struct BridgeCommitment;
 impl snowbridge_pallet_outbound_queue_v2::OnNewCommitment for BridgeCommitment {
 	fn on_new_commitment(root: H256) {
-		OutboundRoot::<Runtime>::put(root);
+		if !cfg!(feature = "hyperbridge-poc") {
+			OutboundRoot::<Runtime>::put(root);
+		}
 	}
 }
 impl sp_consensus_beefy::mmr::BeefyDataProvider<H256> for BridgeCommitment {
@@ -330,7 +334,34 @@ mod tests {
 				snowbridge_pallet_outbound_queue_v2::MessageLeaves::<Runtime>::get().is_empty()
 			);
 			EthereumBridge::on_initialize(11);
-			assert_eq!(BridgeCommitment::extra_data(), H256::zero());
+			assert_eq!(
+				BridgeCommitment::extra_data(),
+				if cfg!(feature = "hyperbridge-poc") { binding.message_hash } else { H256::zero() }
+			);
+		});
+	}
+	#[cfg(feature = "hyperbridge-poc")]
+	#[test]
+	fn hyperbridge_history_survives_empty_blocks_and_rejects_overflow() {
+		sp_io::TestExternalities::default().execute_with(|| {
+			crate::System::set_block_number(10);
+			let (_, _, record) = fixture();
+			for nonce in 1..=64u64 {
+				let id = H256::from_low_u64_be(nonce);
+				Redemptions::<Runtime>::insert(id, Export { record: record.clone(), attempt: 0, phase: RedemptionPhase::Queued });
+				assert!(EthereumBridge::accept(id, nonce, id).is_ok());
+			}
+			let root = BridgeCommitment::extra_data();
+			assert_ne!(root, H256::zero());
+			EthereumBridge::on_initialize(11);
+			<BridgeCommitment as snowbridge_pallet_outbound_queue_v2::OnNewCommitment>::on_new_commitment(H256::repeat_byte(9));
+			assert_eq!(BridgeCommitment::extra_data(), root);
+			let id = H256::from_low_u64_be(65);
+			Redemptions::<Runtime>::insert(id, Export { record, attempt: 0, phase: RedemptionPhase::Queued });
+			assert!(EthereumBridge::accept(id, 65, id).is_err());
+			assert!(!ByNonce::<Runtime>::contains_key(65));
+			assert_eq!(pallet_ethereum_bridge::OutboundHistory::<Runtime>::get().len(), 64);
+			assert_eq!(BridgeCommitment::extra_data(), root);
 		});
 	}
 	#[test]

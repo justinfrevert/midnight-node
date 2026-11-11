@@ -119,6 +119,25 @@ fn address(value: H160) -> [u8; 32] {
 pub fn asset_id(config: &Registry) -> [u8; 32] {
 	abi_hash(&[word(b"MN/SB/ASSET/V1"), config.escrow.bridge_domain, address(config.token)])
 }
+
+/// OpenZeppelin-compatible sorted pairs; odd nodes are promoted without rehashing.
+pub fn outbound_history_root(leaves: &[H256]) -> H256 {
+	let mut level = leaves.to_vec();
+	while level.len() > 1 {
+		level = level
+			.chunks(2)
+			.map(|pair| {
+				if pair.len() == 1 {
+					return pair[0];
+				}
+				let (left, right) =
+					if pair[0] < pair[1] { (pair[0], pair[1]) } else { (pair[1], pair[0]) };
+				H256::from(keccak_256(&[left.as_bytes(), right.as_bytes()].concat()))
+			})
+			.collect();
+	}
+	level.first().copied().unwrap_or_default()
+}
 pub fn deposit_id(config: &Registry, nonce: u64) -> [u8; 32] {
 	abi_hash(&[word(b"MN/SB/DEPOSIT/V1"), config.escrow.bridge_domain, uint(nonce.into())])
 }
@@ -130,6 +149,9 @@ pub mod pallet {
 	pub struct Pallet<T>(_);
 	#[pallet::config]
 	pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> {
+		/// Fresh-genesis Hyperbridge profile retains a bounded cumulative message commitment.
+		#[pallet::constant]
+		type RetainOutboundHistory: Get<bool>;
 		type Verifier: Verifier;
 		type Ledger: MidnightSystemTransactionEthereumExecutor;
 		type EscrowValidator: ValidateEscrow;
@@ -157,12 +179,16 @@ pub mod pallet {
 	#[pallet::storage]
 	pub type OutboundRoot<T> = StorageValue<_, H256, ValueQuery>;
 	#[pallet::storage]
+	pub type OutboundHistory<T> = StorageValue<_, BoundedVec<H256, ConstU32<64>>, ValueQuery>;
+	#[pallet::storage]
 	pub type OutboundHalted<T> = StorageValue<_, bool, ValueQuery>;
 	#[pallet::hooks]
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
 		fn on_initialize(_: BlockNumberFor<T>) -> Weight {
 			// MMR runs earlier and has already read the previous block's commitment.
-			OutboundRoot::<T>::kill();
+			if !T::RetainOutboundHistory::get() {
+				OutboundRoot::<T>::kill();
+			}
 			T::DbWeight::get().writes(1)
 		}
 	}
@@ -397,6 +423,12 @@ pub mod pallet {
 				export.phase == RedemptionPhase::Queued && !ByNonce::<T>::contains_key(nonce),
 				Error::<T>::InvalidRedemption
 			);
+			if T::RetainOutboundHistory::get() {
+				let mut history = OutboundHistory::<T>::get();
+				history.try_push(message_hash).map_err(|_| Error::<T>::Capacity)?;
+				OutboundRoot::<T>::put(outbound_history_root(&history));
+				OutboundHistory::<T>::put(history);
+			}
 			export.phase = RedemptionPhase::AwaitingResult(nonce);
 			ByNonce::<T>::insert(
 				nonce,

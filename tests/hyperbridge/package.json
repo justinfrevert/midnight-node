@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@openzeppelin/contracts": "5.4.0",
+    "@polytope-labs/solidity-merkle-trees": "1.1.0"
+  }
+}

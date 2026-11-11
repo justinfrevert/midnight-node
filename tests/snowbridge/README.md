@@ -16,19 +16,15 @@ chain is **not validated or supported by this PoC**. Use fresh genesis only. The
 standalone component harness retains its own workspace and lockfile. Original
 research notes are preserved.
 
-## SP1 outbound finality
+## Hyperbridge outbound finality
 
-The optional SP1/Avail-style prover and receiver integration is documented in
-[the SP1 runbook](sp1/README.md). It reuses this complete token flow and substitutes
-real Groth16 finality proofs for direct Ethereum BEEFY signature checks.
-The fresh SP1 bidirectional run with committee-state protection passed on 2026-10-26:
-[`run-mjrg6180/validation.json`](evidence/run-mjrg6180.validation.json)
-records `completeBridgeE2E: true`, `sp1FinalityProved: true` and
-`committeeStateVerified: true`. The guest binds the signed successor to the runtime
-MMR and the relayer defers rotation boundaries until the snapshot confirms it.
-Use a newly built guest key and a fresh receiver; existing immutable receivers do
-not acquire the new checks automatically. See the SP1 runbook for the remaining
-eclipse/freshness limitations.
+The custom Avail-style SP1 guest, receiver and relayer have been removed on
+`justin-hyperbridge-sp1`. The replacement uses Hyperbridge's unchanged published
+BEEFY ELF and `SP1Beefy.sol`, plus our stateful receiver and cumulative message
+commitment. See the [Hyperbridge runbook](../hyperbridge/README.md).
+The original direct-signature Snowbridge path remains available without
+`SNOWBRIDGE_HYPERBRIDGE=true`. Historical SP1 evidence below describes the old
+implementation at commit `b59e728cc`, not validation of this replacement.
 
 ## Local end-to-end runbook
 
@@ -348,12 +344,9 @@ and a working ledger-root RPC. This is live Midnight block-production validation
 not a cross-chain transfer. The node uses the existing mock Cardano follower;
 validator selection fell back to the configured single Alice authority.
 
-`test.sh` runs the complete JavaScript suite through `npm test`, the native SP1
-verifier suite, Solidity component tests and the public captured Groth16 proof,
-then the Rust ledger fixtures (including the real-proof funded round trip) and
-committed-state decoding. No SP1 proving toolchain is needed to verify the saved
-proof. Both the fixture and its checkpoint can be overridden with
-`SNOWBRIDGE_SP1_PROOF` and `SNOWBRIDGE_SP1_INITIAL`.
+`test.sh` runs the JavaScript suite, Solidity component tests, Rust ledger
+fixtures and committed-state decoding. The Hyperbridge runbook separately covers
+real proofs against the upstream guest, consensus contract and receiver.
 The negative cases include invalid amounts, lifetime capacity, deposit replay
 after spending, conflicting deposit payloads, unfunded Compact calls, duplicate
 and insufficient signers, stale/altered commitments, noncanonical proofs, disabled
@@ -430,11 +423,9 @@ profile consumes signatures from the running node's BEEFY gadget.
 
 ## Work beyond the local PoC
 
-The [SP1 feasibility investigation](../../docs/proposals/snowbridge-sp1-feasibility.md)
-checks the sibling BEEFY prover against saved live commitments and describes the
-minimal receiver/prover integration. That integration is now implemented and
-validated in the [SP1 runbook](sp1/README.md); production operation, migration and
-live multi-validator membership changes remain outstanding.
+The [Hyperbridge integration](../hyperbridge/README.md) replaces the custom
+SP1 verifier boundary. Production operation, migration and live multi-validator
+membership changes remain outside this disposable single-authority profile.
 
 Implementation notes from the live runs:
 

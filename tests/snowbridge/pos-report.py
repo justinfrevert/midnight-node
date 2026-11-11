@@ -17,6 +17,7 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+import subprocess
 import urllib.request
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -65,6 +66,17 @@ if compact:
     assert "test result: ok. 1 passed" in (run / "compact-prove.log").read_text()
     assert live["compact"]["consumerBalance"] == 60 and live["compact"]["escrowBalance"] == 40
     assert live["compact"]["walletBalance"] == 0
+    if outbound:
+        post=read("post-redemption-state.json")
+        assert post["complete"] and post["redemptionPhase"] == "Completed"
+        assert post["midnightGenesis"] == smoke["genesisHash"]
+        assert post["midnightFinalizedNumber"] <= smoke["finalizedNumber"]
+        assert post["compact"] == {"consumer":60,"escrow":40}
+        assert post["ethereum"]["custody"] == 60 and post["ethereum"]["recipient"] == 40
+        assert int(status["finalizedExecution"]["number"],16) >= post["ethereum"]["finalizedNumber"]
+        for name,expected in post["sha256"].items():
+            assert hashlib.sha256((run/name).read_bytes()).hexdigest() == expected
+        files += ["post-redemption-state.json", "ledger/final-consumer-state.bin", "ledger/final-escrow-state.bin"]
     assert live["compact"]["consumerBalance"] + live["compact"]["walletBalance"] + (0 if outbound else live["compact"]["escrowBalance"]) == custody
     assert live["compact"]["ledgerStats"]["contractCount"] == 2
     assert live["compact"]["ledgerStats"]["unshieldedUtxoCount"] == live["ledgerBefore"]["unshieldedUtxoCount"]
@@ -76,6 +88,10 @@ if live.get("verifierRepair"):
 if outbound:
     assert compact and live["completeBridgeE2E"]
     result=live["outbound"]
+    assert post["redemptionId"] == result["id"]
+    compact_manifest=read("ledger/compact-manifest.json")
+    assert post["compactContracts"] == {name:compact_manifest[name] for name in ("consumer","escrow","color")}
+    assert post["ethereum"]["finalizedNumber"] >= read("release-receipt-1/evidence.json")["executionBlock"]
     assert result["phase"] == "Completed" and result["liveConsensusProofs"]
     assert [attempt["success"] for attempt in result["attempts"]] == [False,True]
     assert result["attempts"][0]["nonce"] != result["attempts"][1]["nonce"]
@@ -104,70 +120,66 @@ if outbound:
         assert int.from_bytes(data[32:64],"big") == index
         assert int(log["logIndex"],16) == release["logIndex"]
         files += [f"release-receipt-{index}/{name}" for name in ["event.scale","update.scale","evidence.json"]]
-        files += [f"outbound-proof-{index}.json",f"mmr-{index}.json",f"mmr-input-{index}.json",f"mmr-simple-{index}/simplified.json",f"release-broadcast-{index}.json"]
+        files += [f"outbound-proof-{index}.json",f"mmr-{index}.json",f"mmr-input-{index}.json",f"release-broadcast-{index}.json"]
+    if not deployment.get("hyperbridge",False):
+        files += [f"mmr-simple-{index}/simplified.json" for index in range(2)]
     files += [p.name for p in run.glob("beefy-*.scale")]
-sp1=deployment.get("sp1",False)
-if sp1:
+hyperbridge=deployment.get("hyperbridge",False)
+if hyperbridge:
+    subprocess.run(["python3", str(ROOT / "tests/hyperbridge/prepare.py"), "--check-only"], check=True)
     assert outbound
-    key=read("sp1-key.json")
-    assert key["sdkVersion"] == "6.10.0" and key["circuitVersion"] == "v6.1.0"
-    elf=ART/"sp1-target/elf-compilation/riscv64im-succinct-zkvm-elf/release/midnight-sp1-guest"
-    elf_bytes=elf.read_bytes()
-    assert hashlib.sha256(elf_bytes).hexdigest() == key["elfSha256"]
-    (run/"sp1-guest.elf").write_bytes(elf_bytes)
-    files += ["sp1-guest.elf"]
-    initial=(run/"sp1-initial.scale").read_bytes()
-    assert "0x"+initial[:32].hex() == smoke["genesisHash"]
-    assert "0x"+initial.hex() == checkpoint["sp1Checkpoint"]
-    previous=rpc("web3_sha3",["0x"+(b"midnight-vector-state-v1"+initial).hex()])
-    verifier_code_hash=rpc("web3_sha3",[rpc("eth_getCode",[deployment["sp1Verifier"],status["finalizedExecution"]["number"]])])
-    receiver_code_hash=rpc("web3_sha3",[rpc("eth_getCode",[deployment["beefyClient"],status["finalizedExecution"]["number"]])])
+    key=read("hyperbridge-key.json")
+    assert key["programVKey"] == "0x007d1720c695842ed647a1a72e981751f9b5e26fc5ca038523b23430a1292f08"
+    assert checkpoint["midnightGenesis"] == smoke["genesisHash"]
+    final_block=status["finalizedExecution"]["number"]
+    def code_hash(address):
+        return rpc("web3_sha3",[rpc("eth_getCode",[address,final_block])])
+    def receiver_call(signature, argument=""):
+        selector=rpc("web3_sha3",["0x"+signature.encode().hex()])[:10]
+        return rpc("eth_call",[{"to":deployment["beefyClient"],"data":selector+argument},final_block])
+    expected_code={"verifierCodeHash":code_hash(deployment["sp1Verifier"]),
+        "consensusCodeHash":code_hash(deployment["hyperbridgeConsensus"]),
+        "receiverCodeHash":code_hash(deployment["beefyClient"])}
+    leaf_topic=rpc("web3_sha3",["0x"+b"LeafAccepted(uint32,bytes32,bytes32)".hex()])
+    assert receiver_call("genesisHash()") == checkpoint["midnightGenesis"]
     for attempt in result["attempts"]:
-        accepted=attempt["sp1"]
-        assert accepted["realGroth16"] and accepted["finalized"]
-        job=read(f"sp1/job-{accepted['block']}.json")
-        assert job["phase"] == "Finalized" and job["negativeChecks"] == 6
-        assert job["proof"]["programVKey"] == key["programVKey"]
-        assert job["proof"]["elfSha256"] == key["elfSha256"]
-        assert job["proof"]["profile"] == "ethereum-address-stake-v2-committee-mmr"
-        assert job["proof"]["committeeStateVerified"] is True
-        for block in job["proof"]["verifiedBlocks"]:
-            committee=read(f"committee-{block}.json")
-            assert committee["block"] == block
-            assert int(committee["leafIndex"]) + 1 == int(committee["leafCount"])
-            leaf=bytes.fromhex(committee["leaf"].removeprefix("0x"))
-            assert len(leaf) == 113 and leaf[0] == 0x20
-            assert int.from_bytes(leaf[1:5], "little") + 1 == block
-        assert job["proof"]["mmrRoot"] == accepted["mmrRoot"]
-        assert job["proof"]["checkpointHash"] == accepted["checkpointHash"]
-        assert job["proof"]["previousStateHash"] == previous
-        assert job["verifierCodeHash"] == verifier_code_hash
-        assert job["receiverCodeHash"] == receiver_code_hash
-        previous=accepted["checkpointHash"]
-        receipt=rpc("eth_getTransactionReceipt",[accepted["transaction"]])
-        assert int(receipt["status"],16) == 1
-        assert receipt["to"].lower() == deployment["beefyClient"].lower()
-        assert int(status["finalizedExecution"]["number"],16) >= int(receipt["blockNumber"],16)
-        assert rpc("eth_getBlockByNumber",[receipt["blockNumber"],False])["hash"] == receipt["blockHash"]
-        assert receipt["blockHash"] == job["receipt"]["blockHash"]
-        assert int(receipt["gasUsed"],16) == int(accepted["gasUsed"])
-        root_topic="0xf433844eba9a8b98d2cb5c2e3a103178f84043e9d27fffb0faf04171d1aa0c49"
-        root_log,=[entry for entry in receipt["logs"] if entry["address"].lower() == deployment["beefyClient"].lower() and entry["topics"][0] == root_topic]
-        assert len(root_log["topics"]) == 3
-        assert int(root_log["topics"][1],16) == accepted["block"]
-        assert root_log["topics"][2] == accepted["mmrRoot"]
-        assert root_log["data"] == accepted["checkpointHash"]
+        accepted=attempt["hyperbridge"]
         release=read(f"outbound-proof-{attempt['index']}.json")
-        assert release["commitment"]["blockNumber"] == accepted["block"]
-        assert next(p["data"] for p in release["commitment"]["payload"] if p["payloadID"] == "0x6d68") == accepted["mmrRoot"]
-    files += ["sp1-key.json", "sp1-initial.scale", "sp1-observed.json"]
+        assert release["leaf"]["parentNumber"]+1 == accepted["block"]
+        assert release["leafProof"] == [] and int(release["leafProofOrder"]) == 0
+        assert release["leaf"]["parachainHeadsRoot"] == accepted["messageRoot"]
+        for update in accepted["updates"]:
+            assert update["realGroth16"] and update["finalized"]
+            job=read(f"hyperbridge/job-{update['block']}.json")
+            assert job["phase"] == "Finalized" and job["negativeChecks"] == 4
+            assert job["programVKey"] == key["programVKey"]
+            assert job["elfSha256"] == key["upstreamElfSha256"]
+            assert all(job[field] == expected for field,expected in expected_code.items())
+            assert rpc("web3_sha3",[job["rawTransaction"]]) == update["transaction"]
+            receipt=rpc("eth_getTransactionReceipt",[update["transaction"]])
+            assert int(receipt["status"],16) == 1 and receipt["to"].lower() == deployment["beefyClient"].lower()
+            assert rpc("eth_getBlockByNumber",[receipt["blockNumber"],False])["hash"] == receipt["blockHash"]
+            assert receipt["blockHash"] == job["receipt"]["blockHash"]
+            assert int(status["finalizedExecution"]["number"],16) >= int(receipt["blockNumber"],16)
+            assert int(receipt["gasUsed"],16) == int(update["gasUsed"])
+            accepted_log,=[entry for entry in receipt["logs"] if entry["address"].lower() == deployment["beefyClient"].lower() and entry["topics"][0] == leaf_topic]
+            assert len(accepted_log["topics"]) == 3
+            assert int(accepted_log["topics"][1],16) == update["block"]
+            assert accepted_log["topics"][2] == update["leafHash"]
+            assert accepted_log["data"] == update["messageRoot"]
+            assert int(receiver_call("authenticatedLeaves(bytes32)",update["leafHash"][2:]),16) == 1
+    last=result["attempts"][-1]["hyperbridge"]
+    assert int(receiver_call("latestBeefyBlock()"),16) == last["block"]
+    assert receiver_call("latestLeafHash()") == last["leafHash"]
+    assert receiver_call("latestMessageRoot()") == last["messageRoot"]
+    files += ["hyperbridge-key.json", "hyperbridge-observed.json", "hyperbridge-upstream.json"]
     files += [p.name for p in sorted(run.glob("committee-*.json"))]
-    if (run/"sp1-backfill.json").exists(): files += ["sp1-backfill.json"]
-    files += [str(p.relative_to(run)) for p in sorted((run/"sp1").rglob("*")) if p.is_file()]
+    if (run/"hyperbridge-backfill.json").exists(): files += ["hyperbridge-backfill.json"]
+    files += [str(p.relative_to(run)) for p in sorted((run/"hyperbridge").rglob("*")) if p.is_file()]
 manual_files = sorted(run.glob("manual/*.request.json")) + sorted(run.glob("manual/*.response.json"))
 files += [str(path.relative_to(run)) for path in manual_files]
 evidence={"profile":"live-pos-bidirectional-compact" if outbound else ("live-pos-compact-ingress" if compact else "live-pos-native-ingress"),"completeBridgeE2E":outbound,
-    "operatorPaced":bool(manual_files), "sp1FinalityProved":sp1, "committeeStateVerified":sp1,
+    "operatorPaced":bool(manual_files), "hyperbridgeFinalityProved":hyperbridge, "hyperbridgeUpstreamUnmodified":hyperbridge, "committeeStateVerified":hyperbridge,
     "nativeTokenIssuedLive":True,"outboundRedemptionLive":outbound,"liveCompactConsumerRoundTrip":compact,
     "ethereumCustody":custody,"nativeAmountIssued":100,"realPoSReceiptVerifiedByPallet":True,"liveMidnightBeaconUpdate":True,
     "escrowAndLedgerDoublesInPalletTest":True,"liveNodeUsesRealEscrowAndLedger":True,
@@ -175,6 +187,7 @@ evidence={"profile":"live-pos-bidirectional-compact" if outbound else ("live-pos
     "ledgerFees":"default, funded with real DUST proofs",
     "localStackRecovery":network.get("recovery"),
     "compactResult":live.get("compact"),
+    "postRedemptionState":post if compact and outbound else None,
     "outboundResult":live.get("outbound"),
     "verifierRepair":live.get("verifierRepair"),
     "binarySha256":smoke["binarySha256"],"metadataSha256":smoke["metadataSha256"],

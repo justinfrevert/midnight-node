@@ -1,5 +1,9 @@
 # Midnight Ethereum bridge development and rollout work breakdown
 
+> Historical design for the custom Avail-style SP1 implementation at commit
+> `b59e728cc`. That implementation is removed on `justin-hyperbridge-sp1`;
+> see the [current Hyperbridge integration](../../tests/hyperbridge/README.md).
+
 Delivery planning draft • 28 October 2026
 
 The local Snowbridge/SP1 bridge proves the bidirectional token lifecycle. Full development now means turning that implementation into a supported protocol, migrating the ledger and clients, operating continuous proof services, and introducing real custody liabilities through controlled release gates. This plan covers those changes across node, ledger, Ethereum contracts, Compact, prover, relayers, clients, security and operations.
@@ -418,4 +422,4 @@ Minimum concurrent disciplines are consensus/runtime, ledger/serialization, Ethe
 
 The supported release is complete when G6 closes, all launch/GA packages are accepted, and named teams operate the deployed versions, custody liabilities, replay history and incident procedures. Remaining features move to W18 with separate scope and budget. Ongoing work includes Ethereum fork readiness, Midnight committee/runtime changes, ledger/client version support, SP1 and cryptography advisories, key rotation, archive capacity, economic reserves, dependency patching and periodic recovery exercises.
 
-Source context: [architecture and source map](snowbridge-sp1-production-architecture.md#14-source-map-and-presentation-guide), [current runbook](../../tests/snowbridge/README.md), [SP1 runbook](../../tests/snowbridge/sp1/README.md), [original implementation specification](snowbridge-implementation-spec.md), and [E2E strategy](snowbridge-e2e-testing-strategy.md). The older spikes remain historical inputs; locally validated PoC functionality is carried forward as H work rather than incorrectly listed as unimplemented from scratch.
+Source context: [architecture and source map](snowbridge-sp1-production-architecture.md#14-source-map-and-presentation-guide), [current runbook](../../tests/snowbridge/README.md), [SP1 runbook](https://github.com/midnightntwrk/midnight-node/blob/b59e728cc8bcc240d073674a6027e3e4fa572f30/tests/snowbridge/sp1/README.md), [original implementation specification](snowbridge-implementation-spec.md), and [E2E strategy](snowbridge-e2e-testing-strategy.md). The older spikes remain historical inputs; locally validated PoC functionality is carried forward as H work rather than incorrectly listed as unimplemented from scratch.

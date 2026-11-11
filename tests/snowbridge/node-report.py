@@ -27,7 +27,10 @@ def sha(path):
 
 sources = json.loads((ART / "node-build-sources.json").read_text())
 for name, expected in sources["files"].items():
-    assert sha(ROOT / name) == expected, f"Source changed since staging: {name}"
+    if expected is None:
+        assert not (ROOT / name).exists(), f"Deleted source reappeared: {name}"
+    else:
+        assert sha(ROOT / name) == expected, f"Source changed since staging: {name}"
 for filename in ["pallet-tests.log", "host-tests.log", "genesis-test.log", "system-regression.log", "runtime-filter-tests.log"]:
     assert "test result: ok." in (ART / filename).read_text(), filename
 assert "Finished `release`" in (ART / "node-build.log").read_text(), "Release/Wasm build incomplete"

@@ -111,6 +111,7 @@ serde.workspace = true
 substrate-wasm-builder = { workspace = true, optional = true, default-features = true }
 
 [features]
+hyperbridge-poc = ["ethereum-bridge-poc"]
 # Disposable fresh-genesis bridge build; requires the explicit patched-ledger checkout.
 ethereum-bridge-poc = ["dep:snowbridge-outbound-queue-primitives", "dep:snowbridge-pallet-outbound-queue-v2", "dep:pallet-message-queue", "dep:bp-relayers", "dep:staging-xcm", "dep:pallet-ethereum-bridge", "dep:snowbridge-pallet-ethereum-client", "dep:snowbridge-beacon-primitives", "midnight-node-ledger/ethereum-bridge-poc", "pallet-midnight-system/ethereum-bridge-poc"]
 default = ["std"]

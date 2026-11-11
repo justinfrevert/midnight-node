@@ -1,5 +1,9 @@
 # Midnight Ethereum bridge decision brief
 
+> Historical design for the custom Avail-style SP1 implementation at commit
+> `b59e728cc`. That implementation is removed on `justin-hyperbridge-sp1`;
+> see the [current Hyperbridge integration](../../tests/hyperbridge/README.md).
+
 Decision brief | 28 October 2026
 
 ## Proposal

@@ -101,7 +101,7 @@ try:
         time.sleep(2)
     driver = os.environ.get("SNOWBRIDGE_NODE_DRIVER")
     if driver:
-        subprocess.run(["node", str(ROOT / "tests/snowbridge" / driver)], cwd=ROOT, env=env, check=True, timeout=None if env.get("SNOWBRIDGE_MANUAL") == "1" else (10800 if env.get("SNOWBRIDGE_SP1") == "true" else 3600))
+        subprocess.run(["node", str(ROOT / "tests/snowbridge" / driver)], cwd=ROOT, env=env, check=True, timeout=None if env.get("SNOWBRIDGE_MANUAL") == "1" else (10800 if env.get("SNOWBRIDGE_HYPERBRIDGE") == "true" else 3600))
     head = rpc("chain_getFinalizedHead")
     number = int(rpc("chain_getHeader", [head])["number"],16)
     root = rpc("midnight_ledgerStateRoot", [head])

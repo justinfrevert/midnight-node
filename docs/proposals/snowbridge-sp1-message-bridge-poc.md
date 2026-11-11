@@ -1,5 +1,9 @@
 # A simple bridge between Ethereum and Midnight
 
+> Historical design for the custom Avail-style SP1 implementation at commit
+> `b59e728cc`. That implementation is removed on `justin-hyperbridge-sp1`;
+> see the [current Hyperbridge integration](../../tests/hyperbridge/README.md).
+
 Ethereum and Midnight are separate blockchains. An application on one chain needs evidence before it can act on something that happened on the other.
 
 The proposal is a **two-way message bridge**: send a request from Ethereum to Midnight, then send a verified reply back. Each chain checks cryptographic evidence that the message was recorded and confirmed on the other chain. This small proof of concept gives us a foundation for applications that span both networks.
@@ -104,7 +108,7 @@ Build the mailbox endpoints and connect the verification and relay services on f
 
 Success means a real round trip works, altered or repeated messages are rejected, replies work across a validator-session transition, and restarting a relayer completes pending work. Deployment to an existing network requires a separate compatibility and upgrade review.
 
-There is concrete starting evidence: the [existing local token PoC](../../tests/snowbridge/sp1/README.md#validated-committee-protection--2026-10-26) exercised both proof paths, real Groth16 verification, tampering/replay rejection and a session rotation. That live run used one validator key; changed membership and the new mailbox application still need live validation.
+There is concrete starting evidence: the [existing local token PoC](https://github.com/midnightntwrk/midnight-node/blob/b59e728cc8bcc240d073674a6027e3e4fa572f30/tests/snowbridge/sp1/README.md#validated-committee-protection--2026-10-26) exercised both proof paths, real Groth16 verification, tampering/replay rejection and a session rotation. That live run used one validator key; changed membership and the new mailbox application still need live validation.
 
 ## Bonus follow-on: tokens
 

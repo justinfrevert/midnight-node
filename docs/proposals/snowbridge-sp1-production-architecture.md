@@ -1,5 +1,9 @@
 # Midnight Ethereum bridge production architecture
 
+> Historical design for the custom Avail-style SP1 implementation at commit
+> `b59e728cc`. That implementation is removed on `justin-hyperbridge-sp1`;
+> see the [current Hyperbridge integration](../../tests/hyperbridge/README.md).
+
 Architecture review draft • 28 October 2026
 
 Midnight can bridge an allowlisted Ethereum ERC-20 into native unshielded ledger assets by combining Snowbridge verification for Ethereum events with SP1 verification of Midnight BEEFY finality on Ethereum. The local implementation demonstrates the complete token lifecycle. A supported deployment also requires coordinated ledger and client releases, an existing-chain migration, production proof services, authenticated bootstrap procedures, and explicit upgrade and incident policies.
@@ -46,7 +50,7 @@ The bridge does not route through Polkadot, Asset Hub, or Avail. Snowbridge supp
 
 ## 2 Current implementation and production boundary
 
-The recorded runs used node revision `5b9e6724ad0abc1570d43b66b7d568ee4511faf6` plus the then-uncommitted bridge implementation. This branch contains the implementation, dependency patches and build scripts. The [public evidence snapshot](../../tests/snowbridge/evidence/README.md) preserves historical results and explains their provenance; it does not attest a newly built commit. The latest saved acceptance profile is described in the [SP1 runbook](../../tests/snowbridge/sp1/README.md), dated 26 October 2026. The finite local run used Geth/Lodestar and one Midnight validator with development Cardano observation. It is distinct from a deployed network service.
+The recorded runs used node revision `5b9e6724ad0abc1570d43b66b7d568ee4511faf6` plus the then-uncommitted bridge implementation. This branch contains the implementation, dependency patches and build scripts. The [public evidence snapshot](../../tests/snowbridge/evidence/README.md) preserves historical results and explains their provenance; it does not attest a newly built commit. The latest saved acceptance profile is described in the [SP1 runbook](https://github.com/midnightntwrk/midnight-node/blob/b59e728cc8bcc240d073674a6027e3e4fa572f30/tests/snowbridge/sp1/README.md), dated 26 October 2026. The finite local run used Geth/Lodestar and one Midnight validator with development Cardano observation. It is distinct from a deployed network service.
 
 | Area | Implemented and locally validated | Required production change |
 | --- | --- | --- |
@@ -502,8 +506,8 @@ Moving between gates is a release decision, not a calendar event. A fork incompa
 | Runtime integration and limits | [Runtime wiring](../../runtime/src/ethereum_bridge.rs), [runtime assembly](../../runtime/src/lib.rs), [bridge state machine](../../pallets/ethereum-bridge/src/lib.rs) |
 | Ledger authorization and replay | [Host functions](../../ledger/src/host_api/ledger_9.rs), [MidnightSystem](../../pallets/midnight-system/src/lib.rs), [ledger patch](../../tests/snowbridge/patches/ledger.patch), [migration patch](../../tests/snowbridge/patches/migration.patch) |
 | Compact retirement and schema | [Escrow source](../../tests/snowbridge/compact/escrow.compact), [consumer fixture](../../tests/snowbridge/compact/consumer.compact), [committed state reader](../../ledger/src/ledger_9/ethereum_bridge.rs) |
-| Ethereum custody and verification | [Gateway](../../tests/snowbridge/contracts/src/MidnightGateway.sol), [receiver](../../tests/snowbridge/contracts/src/MidnightSP1Client.sol), [upstream patch](../../tests/snowbridge/patches/upstream.patch) |
-| SP1 protocol and recovery | [Guest verifier](../../tests/snowbridge/sp1/beefy/src/lib.rs), [committee witness verifier](../../tests/snowbridge/sp1/beefy/src/committee.rs), [SP1 runbook](../../tests/snowbridge/sp1/README.md), [relayer](../../tests/snowbridge/sp1-relay.mjs) |
+| Ethereum custody and verification | [Gateway](../../tests/snowbridge/contracts/src/MidnightGateway.sol), [receiver](https://github.com/midnightntwrk/midnight-node/blob/b59e728cc8bcc240d073674a6027e3e4fa572f30/tests/snowbridge/contracts/src/MidnightSP1Client.sol), [upstream patch](../../tests/snowbridge/patches/upstream.patch) |
+| SP1 protocol and recovery | [Guest verifier](https://github.com/midnightntwrk/midnight-node/blob/b59e728cc8bcc240d073674a6027e3e4fa572f30/tests/snowbridge/sp1/beefy/src/lib.rs), [committee witness verifier](https://github.com/midnightntwrk/midnight-node/blob/b59e728cc8bcc240d073674a6027e3e4fa572f30/tests/snowbridge/sp1/beefy/src/committee.rs), [SP1 runbook](https://github.com/midnightntwrk/midnight-node/blob/b59e728cc8bcc240d073674a6027e3e4fa572f30/tests/snowbridge/sp1/README.md), [relayer](https://github.com/midnightntwrk/midnight-node/blob/b59e728cc8bcc240d073674a6027e3e4fa572f30/tests/snowbridge/sp1-relay.mjs) |
 | Protocol detail and acceptance model | [Implementation specification](snowbridge-implementation-spec.md), [E2E strategy](snowbridge-e2e-testing-strategy.md), [runtime and ledger spike](snowbridge-runtime-ledger-integration-spike.md) |
 | Saved local acceptance evidence | [Latest validation report](../../tests/snowbridge/evidence/run-mjrg6180.validation.json); raw local artifacts require a separate archive, as described in the [evidence guide](../../tests/snowbridge/evidence/README.md) |
 

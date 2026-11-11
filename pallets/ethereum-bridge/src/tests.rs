@@ -68,6 +68,7 @@ impl QueueRedemption for TestQueue {
 	}
 }
 impl Config for Test {
+	type RetainOutboundHistory = frame_support::traits::ConstBool<false>;
 	type Verifier = TestVerifier;
 	type Ledger = TestLedger;
 	type EscrowValidator = TestEscrow;

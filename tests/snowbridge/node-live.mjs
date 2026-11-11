@@ -19,6 +19,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as rt from '@midnight-ntwrk/compact-runtime';
 import { prepareLiveBridge, redeemLive } from './outbound-live.mjs';
+import { captureFinalState } from './final-state.mjs';
 import { beforeSubmission, checkpoint } from './manual-control.mjs';
 import * as escrowContract from '../../artifacts/snowbridge/compact/escrow/contract/index.js';
 
@@ -234,6 +235,7 @@ try {
       await verifyCompact(ledgerDir,before);
       if (process.env.SNOWBRIDGE_LIVE_OUTBOUND === '1') {
         evidence.outbound = await redeemLive({api,provider,dir,send,decodeArg,signer:keys.Alice});
+        evidence.finalContractState = await captureFinalState(api,provider,dir);
         evidence.outboundRedemptionLive = true;
         evidence.completeBridgeE2E = true;
       }

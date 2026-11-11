@@ -25,10 +25,7 @@ for contract in escrow consumer; do
     "$COMPACTC" "tests/snowbridge/compact/$contract.compact" "artifacts/snowbridge/compact/$contract"
 done
 npm test --prefix tests/snowbridge
-cargo test --locked --manifest-path tests/snowbridge/sp1/Cargo.toml -p midnight-beefy
 node tests/snowbridge/compact-ledger.mjs
-export SNOWBRIDGE_SP1_PROOF=${SNOWBRIDGE_SP1_PROOF:-$ROOT/tests/snowbridge/fixtures/sp1-committee-boundary-proof.json}
-export SNOWBRIDGE_SP1_INITIAL=${SNOWBRIDGE_SP1_INITIAL:-$ROOT/tests/snowbridge/fixtures/sp1-committee-boundary-initial.scale}
 "$FORGE" test --root tests/snowbridge/contracts -vv
 MIDNIGHT_LEDGER_TEST_STATIC_DIR="$ROOT/artifacts/snowbridge/compact" CARGO_TARGET_DIR="$ROOT/target" cargo test --locked --manifest-path tests/snowbridge/rust/Cargo.toml --features compact-ledger
 node tests/snowbridge/verify-escrow.mjs

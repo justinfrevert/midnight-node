@@ -1,0 +1,22 @@
+[profile.default]
+test = "test"
+out = "../../../artifacts/hyperbridge/solidity-out"
+cache_path = "../../../artifacts/hyperbridge/solidity-cache"
+solc_version = "0.8.34"
+evm_version = "prague"
+optimizer = true
+via_ir = true
+allow_paths = ["../../../artifacts/hyperbridge", "../../../artifacts/snowbridge", "../../snowbridge/contracts/src"]
+remappings = [
+  "midnight-adapter/=../../snowbridge/contracts/src/",
+  "hyperbridge/=../../../artifacts/hyperbridge/upstream/evm/src/",
+  "@hyperbridge/core/=../../../artifacts/hyperbridge/upstream/sdk/packages/core/contracts/",
+  "@sp1-contracts/=../../../artifacts/snowbridge/sp1-contracts/contracts/src/",
+  "@openzeppelin/contracts/=../../../artifacts/hyperbridge/deps/node_modules/@openzeppelin/contracts/",
+  "@polytope-labs/=../../../artifacts/hyperbridge/deps/node_modules/@polytope-labs/",
+  "forge-std/=../../../artifacts/snowbridge/upstream/contracts/lib/forge-std/src/"
+]
+fs_permissions = [
+  { access = "read", path = "../../../artifacts/hyperbridge" },
+  { access = "read", path = "../fixtures" }
+]

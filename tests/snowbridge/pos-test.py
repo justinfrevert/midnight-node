@@ -31,10 +31,12 @@ def execute(args, log, env, cwd=ROOT):
     print("Running:", " ".join(str(a) for a in args), flush=True)
     with log.open("w") as output:
         subprocess.run([str(a) for a in args], cwd=cwd, env=env, stdout=output,
-            stderr=subprocess.STDOUT, check=True, timeout=None if env.get("SNOWBRIDGE_MANUAL") == "1" else (10800 if env.get("SNOWBRIDGE_SP1") == "true" else 3600))
+            stderr=subprocess.STDOUT, check=True, timeout=None if env.get("SNOWBRIDGE_MANUAL") == "1" else (10800 if env.get("SNOWBRIDGE_HYPERBRIDGE") == "true" else 3600))
 
 
 def main():
+    if os.environ.get("SNOWBRIDGE_SP1") == "true":
+        raise RuntimeError("Legacy SP1 bridge removed; use SNOWBRIDGE_HYPERBRIDGE=true")
     subprocess.run(["bash", "tests/snowbridge/prepare-proof.sh"], cwd=ROOT, check=True)
     run = stack.up()
     env = dict(os.environ, CARGO_TARGET_DIR=str(ROOT / "target"))

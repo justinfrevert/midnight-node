@@ -30,24 +30,7 @@ manifest alone is not an independent attestation or a substitute for raw evidenc
 
 ## Recheck the public proof
 
-The public [Groth16 proof](../fixtures/sp1-committee-boundary-proof.json) and
-[initial checkpoint](../fixtures/sp1-committee-boundary-initial.scale) are copied
-unchanged from the boundary regression. They contain public proof/checkpoint
-data, with no signing or proving secrets. Their hashes are in the manifest.
-They use the guest key and ELF hash recorded in the [SP1 runbook](../sp1/README.md).
-
-After `prepare.sh`, run from the repository root:
-
-```bash
-SNOWBRIDGE_SP1_PROOF="$PWD/tests/snowbridge/fixtures/sp1-committee-boundary-proof.json" \
-SNOWBRIDGE_SP1_INITIAL="$PWD/tests/snowbridge/fixtures/sp1-committee-boundary-initial.scale" \
-artifacts/snowbridge/tools/foundry/forge test --root tests/snowbridge/contracts \
-  --match-contract SP1ProofTest
-```
-
-This checks real proof acceptance, tampering and replay against the pinned,
-unmodified Succinct verifier and the receiver. It does not generate a new proof
-or rerun the live bridge. `test.sh` supplies this fixture by default; use both
-environment variables to select a different matched proof/checkpoint pair.
-For a new live result, follow the main runbook and require the newly generated
-run's own successful `validation.json`.
+The saved custom-guest Groth16 fixture and checkpoint remain historical evidence
+for commit `b59e728cc`. Their receiver and executable test have been removed.
+For the replacement's reproducible proof and contract checks, see the
+[Hyperbridge runbook](../../hyperbridge/README.md).

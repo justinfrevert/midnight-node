@@ -1,7 +1,11 @@
 # SP1 verification of Midnight BEEFY messages: integration feasibility
 
+> Historical design for the custom Avail-style SP1 implementation at commit
+> `b59e728cc`. That implementation is removed on `justin-hyperbridge-sp1`;
+> see the [current Hyperbridge integration](../../tests/hyperbridge/README.md).
+
 **Implementation update, 2026-10-25:** the integration and full live bidirectional
-test now pass with real Groth16 proofs. See the [SP1 runbook](../../tests/snowbridge/sp1/README.md)
+test now pass with real Groth16 proofs. See the [SP1 runbook](https://github.com/midnightntwrk/midnight-node/blob/b59e728cc8bcc240d073674a6027e3e4fa572f30/tests/snowbridge/sp1/README.md)
 and [acceptance report](../../tests/snowbridge/evidence/run-oiulvrxd.validation.json).
 The public report is a saved result; [evidence provenance](../../tests/snowbridge/evidence/README.md)
 describes its scope and the raw artifacts omitted from Git.

@@ -17,7 +17,7 @@ import { join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { keccakAsHex, secp256k1Expand } from '@polkadot/util-crypto';
-import { encodeCheckpoint, recoverJustifications, recoverCommitteeProofs, hasNextCommitteeSnapshot, proveAndRelay } from './sp1-relay.mjs';
+import { messageTree, proveAndRelay } from './hyperbridge-relay.mjs';
 import { checkpoint } from './manual-control.mjs';
 const ROOT=resolve(import.meta.dirname,'../..');
 const ART=join(ROOT,'artifacts/snowbridge');
@@ -47,12 +47,12 @@ function authority(value) {
 }
 const captureSubscriptions = new Map();
 export async function prepareLiveBridge(api,provider,dir) {
-  if (process.env.SNOWBRIDGE_SP1 === 'true') {
+  if (process.env.SNOWBRIDGE_HYPERBRIDGE === 'true') {
     // Capture announcements during ingress/proving, before any session transition is missed.
     const subscription = api.rpc.beefy.subscribeJustifications(proof => {
       assert(proof.isV1);
       writeFileSync(join(dir,`beefy-${proof.asV1.commitment.blockNumber}.scale`),proof.toU8a());
-      json(join(dir,'sp1-observed.json'),{block:proof.asV1.commitment.blockNumber.toNumber(),setId:proof.asV1.commitment.validatorSetId.toString()});
+      json(join(dir,'hyperbridge-observed.json'),{block:proof.asV1.commitment.blockNumber.toNumber(),setId:proof.asV1.commitment.validatorSetId.toString()});
     });
     captureSubscriptions.set(dir,()=>subscription.then(unsubscribe=>unsubscribe()));
   }
@@ -65,26 +65,14 @@ export async function prepareLiveBridge(api,provider,dir) {
   const checkpoint={current,next,midnightGenesis:api.genesisHash.toHex(),
     ethereumGenesis:(await eth(network.execution,'eth_getBlockByNumber',['0x0',false])).hash,
     midnightGenesisLedgerRoot:await provider.send('midnight_ledgerStateRoot',[api.genesisHash.toHex()])};
-  if (process.env.SNOWBRIDGE_SP1 === 'true') {
-    // This local profile has one fixed stake-one authority in both initial sets.
-    // Anchor its key against BOTH independent address-only MMR authority roots.
-    const keys=await at.query.beefy.authorities();
-    assert.equal(keys.length,1);
-    const address=Buffer.from(keccakAsHex(secp256k1Expand(keys[0].toU8a())).slice(-40),'hex');
-    assert.equal(keccakAsHex(address),current.root);
-    assert.equal(keccakAsHex(address),next.root);
-    const stake=Buffer.alloc(8); stake.writeBigUInt64LE(1n);
-    const root=keccakAsHex(Buffer.concat([address,stake]));
-    const currentStake={...current,root:{toHex:()=>root}};
-    const nextStake={...next,root:{toHex:()=>root}};
-    const height=(await api.rpc.chain.getHeader(finalizedHash)).number.toNumber();
-    const encoded=encodeCheckpoint(checkpoint.midnightGenesis,height,currentStake,nextStake);
-    checkpoint.sp1Checkpoint=hex(encoded);
-    writeFileSync(join(dir,'sp1-initial.scale'),encoded);
-    const key=JSON.parse(readFileSync(process.env.SNOWBRIDGE_SP1_KEY));
-    assert.equal(key.profile,'ethereum-address-stake-v2-committee-mmr','rebuild the SP1 guest for committee protection');
-    json(join(dir,'sp1-key.json'),key);
-    process.env.SNOWBRIDGE_SP1_KEY=join(dir,'sp1-key.json');
+  checkpoint.height=(await api.rpc.chain.getHeader(finalizedHash)).number.toNumber();
+  if (process.env.SNOWBRIDGE_HYPERBRIDGE === 'true') {
+    assert(api.consts.ethereumBridge.retainOutboundHistory.isTrue,'build the node with hyperbridge-poc');
+    const key=JSON.parse(readFileSync(process.env.HYPERBRIDGE_KEY));
+    assert.equal(key.programVKey,'0x007d1720c695842ed647a1a72e981751f9b5e26fc5ca038523b23430a1292f08');
+    json(join(dir,'hyperbridge-key.json'),key);
+    json(join(dir,'hyperbridge-upstream.json'),JSON.parse(readFileSync(join(ROOT,'tests/hyperbridge/upstream.json'))));
+    process.env.HYPERBRIDGE_KEY=join(dir,'hyperbridge-key.json');
   }
   json(join(dir,'beefy-checkpoint.json'),checkpoint);
   process.env.SNOWBRIDGE_BEEFY_CHECKPOINT=join(dir,'beefy-checkpoint.json');
@@ -96,13 +84,14 @@ export async function prepareLiveBridge(api,provider,dir) {
 async function balance(network,deployment,address,block='latest') {
   return BigInt(await eth(network.execution,'eth_call',[{to:deployment.token,data:'0x70a08231'+address.replace(/^0x/,'').padStart(64,'0')},block]));
 }
+const deploymentMode=()=>process.env.SNOWBRIDGE_HYPERBRIDGE==='true';
 async function relayProof(api,provider,dir,id,attempt,signed) {
   const binding=(await api.query.ethereumBridge.byNonce(attempt.nonce)).unwrap();
   const accepted=Number(binding.acceptedBlock.toString());
   const signedBlock=Number(signed.commitment.blockNumber.toString());
   assert(signedBlock>=accepted+1);
   const hash=(await api.rpc.chain.getBlockHash(signedBlock)).toHex();
-  const mmr=await provider.send('mmr_generateProof',[[accepted+1],signedBlock,hash]);
+  const mmr=await provider.send('mmr_generateProof',[[deploymentMode()?signedBlock:accepted+1],signedBlock,hash]);
   json(join(dir,`mmr-${attempt.index}.json`),mmr);
   const leaves=api.registry.createType('Vec<Bytes>',mmr.leaves);
   assert.equal(leaves.length,1);
@@ -111,22 +100,31 @@ async function relayProof(api,provider,dir,id,attempt,signed) {
   const leaf={version:bytes[0],parentNumber:bytes.readUInt32LE(1),parentHash:hex(bytes.subarray(5,37)),
     nextAuthoritySetID:bytes.readBigUInt64LE(37).toString(),nextAuthoritySetLen:bytes.readUInt32LE(45),
     nextAuthoritySetRoot:hex(bytes.subarray(49,81)),parachainHeadsRoot:hex(bytes.subarray(81))};
-  assert.equal(leaf.version,32); assert.equal(leaf.parentNumber,accepted);
-  assert.equal(leaf.parentHash,(await api.rpc.chain.getBlockHash(accepted)).toHex());
-  const historical=await api.at(leaf.parentHash);
+  assert.equal(leaf.version,32); assert.equal(leaf.parentNumber,deploymentMode()?signedBlock-1:accepted);
+  assert.equal(leaf.parentHash,(await api.rpc.chain.getBlockHash(leaf.parentNumber)).toHex());
+  const historical=await api.at(await api.rpc.chain.getBlockHash(accepted));
   const messages=await historical.query.ethereumOutboundQueue.messages();
   assert.equal(messages.length,1,'local profile commits one message per block');
   const m=messages[0];
   assert.equal(m.nonce.toString(),String(attempt.nonce)); assert.equal(m.topic.toHex(),id);
-  assert.equal(leaf.parachainHeadsRoot,binding.messageHash.toHex());
+  let messageProof=[];
+  if(deploymentMode()) {
+    const state=await api.at(leaf.parentHash);
+    const history=(await state.query.ethereumBridge.outboundHistory()).map(h=>h.toHex());
+    const tree=messageTree(history,history.indexOf(binding.messageHash.toHex()));
+    assert.equal(tree.root,leaf.parachainHeadsRoot); messageProof=tree.path;
+  } else assert.equal(leaf.parachainHeadsRoot,binding.messageHash.toHex());
   const payload=signed.commitment.payload.map(([key,value])=>({payloadID:key.toHex(),data:value.toHex()}));
   const root=payload.find(p=>p.payloadID==='0x6d68')?.data; assert(root);
   const proof=api.registry.createType('MmrBatchProof',mmr.proof);
   assert.equal(proof.leafIndices.length,1);
   const input={leafIndex:Number(proof.leafIndices[0].toString()),leafCount:Number(proof.leafCount.toString()),items:proof.items.map(h=>h.toHex()),leafHash:keccakAsHex(bytes),root};
   json(join(dir,`mmr-input-${attempt.index}.json`),input);
-  await run(dir,`mmr-convert-${attempt.index}`,join(ART,'tools/beacon-proof'),['--mode','mmr','--mmr-input',join(dir,`mmr-input-${attempt.index}.json`),'--out',join(dir,`mmr-simple-${attempt.index}`)]);
-  const simple=JSON.parse(readFileSync(join(dir,`mmr-simple-${attempt.index}/simplified.json`)));
+  let simple={items:[],order:'0'};
+  if(!deploymentMode()) {
+    await run(dir,`mmr-convert-${attempt.index}`,join(ART,'tools/beacon-proof'),['--mode','mmr','--mmr-input',join(dir,`mmr-input-${attempt.index}.json`),'--out',join(dir,`mmr-simple-${attempt.index}`)]);
+    simple=JSON.parse(readFileSync(join(dir,`mmr-simple-${attempt.index}/simplified.json`)));
+  }
   const authorities=await (await api.at(hash)).query.beefy.authorities();
   assert.equal(authorities.length,1); assert.equal(signed.validatorSetLen.toNumber(),1);
   assert.equal(Number(signed.signaturesFrom[0])&128,128); assert.equal(signed.signaturesCompact.length,1);
@@ -136,7 +134,7 @@ async function relayProof(api,provider,dir,id,attempt,signed) {
   assert.equal(sig.length,65);
   const result={payloadCount:payload.length,commitment:{blockNumber:signedBlock,validatorSetID:signed.commitment.validatorSetId.toString(),payload},
     validator:{v:sig[64]+27,r:hex(sig.subarray(0,32)),s:hex(sig.subarray(32,64)),index:0,account,proof:[]},
-    leaf,leafProof:simple.items,leafProofOrder:simple.order,
+    leaf,leafProof:simple.items,leafProofOrder:simple.order,messageProof,
     message:{origin:m.origin.toHex(),nonce:m.nonce.toString(),topic:m.topic.toHex(),commands:m.commands.map(c=>({kind:c.kind.toNumber(),gas:c.gas.toString(),payload:c.payload.toHex()}))}};
   json(join(dir,`outbound-proof-${attempt.index}.json`),result);
   return result;
@@ -149,6 +147,7 @@ export async function redeemLive({api,provider,dir,send,decodeArg,signer}) {
     assert(proof.isV1); commitments.push(proof.asV1);
     writeFileSync(join(dir,`beefy-${proof.asV1.commitment.blockNumber}.scale`),proof.toU8a());
   });
+  assert.equal(Boolean(deployment.hyperbridge),deploymentMode());
   const attempts=[];
   try {
     const exported=await send(api.tx.ethereumBridge.exportRedemption(0),signer);
@@ -168,31 +167,16 @@ export async function redeemLive({api,provider,dir,send,decodeArg,signer}) {
       const attempt={index,nonce}; attempts.push(attempt);
       const binding=(await api.query.ethereumBridge.byNonce(nonce)).unwrap();
       let signed;
-      const deferred=new Set();
       while(Date.now()<deadline) {
-        signed=commitments.find(c=>Number(c.commitment.blockNumber.toString())>=Number(binding.acceptedBlock.toString())+1
-          && !deferred.has(c.commitment.blockNumber.toNumber()));
-        if(signed && deployment.sp1) {
-          const block=signed.commitment.blockNumber.toNumber();
-          await recoverCommitteeProofs(api,provider,dir,block);
-          const witness=JSON.parse(readFileSync(join(dir,`committee-${block}.json`)));
-          const next=signed.commitment.payload.find(([id])=>id.toHex()==='0x6e62');
-          assert(next,'missing next committee payload');
-          if(!hasNextCommitteeSnapshot(witness.leaf,next[1].toHex(),signed.commitment.validatorSetId.toString())) {
-            console.log(`Deferring rotation block ${block} until the runtime MMR confirms its successor`);
-            deferred.add(block); signed=undefined;
-          }
-        }
+        signed=commitments.find(c=>Number(c.commitment.blockNumber.toString())>=Number(binding.acceptedBlock.toString())+1);
         if(signed) break;
         await sleep(1000);
       }
       assert(signed,'no live BEEFY signature covering the accepted message');
       await relayProof(api,provider,dir,id,attempt,signed);
-      if (deployment.sp1) {
-        console.log(`Generating and finalizing SP1 proof for block ${signed.commitment.blockNumber}`);
-        await recoverJustifications(api,provider,dir,signed.commitment.blockNumber.toNumber());
-        await recoverCommitteeProofs(api,provider,dir,signed.commitment.blockNumber.toNumber());
-        attempt.sp1=await proveAndRelay(dir,signed.commitment.blockNumber.toNumber());
+      if (deployment.hyperbridge) {
+        console.log(`Generating and finalizing Hyperbridge proof for block ${signed.commitment.blockNumber}`);
+        attempt.hyperbridge=await proveAndRelay(api,provider,dir,signed.commitment.blockNumber.toNumber());
       }
       await run(dir,`release-${index}`,join(ART,'tools/foundry/forge'),['script','script/PosRelease.s.sol:PosRelease','--gas-estimate-multiplier','500','--no-dynamic-test-linking','--rpc-url',network.execution,'--broadcast','--slow',
         '--private-key','0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80','--priority-gas-price','1000000000','--with-gas-price','2000000000'],

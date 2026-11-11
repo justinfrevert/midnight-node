@@ -1,0 +1,11 @@
+{
+  "realGroth16": true,
+  "completeBridgeE2E": false,
+  "sha256": {
+    "tests/hyperbridge/upstream.json": "6e642166ebc102234bcb73312ac0e73292923a97c2fcd9082d2c01f873bf8943",
+    "tests/hyperbridge/fixtures/midnight-live.json": "7c3d7f2a7bf2604b369a1308185bd5955b312c4cd8556320be3fd8a6a748514f",
+    "tests/hyperbridge/fixtures/compatibility/historical.json": "429f4565c0b4d72d4758153917eee6ce92905adad3bfdfbac47c0d565ac4be33",
+    "tests/hyperbridge/fixtures/compatibility/probe.json": "36012694c3bc281a7581bd9407dbcc0ba9296bcbd3c632d0235be0d287d792fa",
+    "tests/hyperbridge/fixtures/compatibility/tip.json": "4e399484d87f901f8aebbcc8426b003ddc7a3013f77e7fef2bd545b9055070ae"
+  }
+}

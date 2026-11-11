@@ -20,12 +20,14 @@ The main checkout keeps its normal dependency pins and lockfile.
 from pathlib import Path
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
 ART = ROOT / "artifacts/snowbridge"
-NODE = ART / "node"
+NODE = Path(os.environ.get("SNOWBRIDGE_BUILD_DIR", str(ART / "node"))).resolve()
+assert NODE.is_relative_to(ROOT / "artifacts"), "Build checkout must be inside artifacts"
 
 def git(*args):
     return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
@@ -36,18 +38,24 @@ if not NODE.exists():
     subprocess.run(["git", "-C", str(NODE), "checkout", "--detach", revision], check=True)
     (NODE / ".snowbridge-build").write_text("owned experimental build checkout\n")
 assert (NODE / ".snowbridge-build").is_file(), "Refusing to overwrite an unowned checkout"
-assert git("-C", str(NODE), "rev-parse", "HEAD") == revision, "Build checkout base changed; preserve/recreate it explicitly"
+build_revision = git("-C", str(NODE), "rev-parse", "HEAD")
+subprocess.run(["git", "merge-base", "--is-ancestor", build_revision, revision], cwd=ROOT, check=True)
 
 paths = {"Cargo.toml"}
-paths.update(git("diff", "--name-only", "HEAD").splitlines())
+paths.update(git("diff", "--name-only", build_revision).splitlines())
 paths.update(p for p in git("ls-files", "--others", "--exclude-standard").splitlines()
              if p.startswith(("ledger/", "pallets/", "primitives/", "runtime/", "node/", "changes/", "tests/snowbridge/fixtures/")))
 manifest = {}
 for name in sorted(paths):
     source = ROOT / name
-    if not source.is_file():
-        raise RuntimeError(f"Unsupported deleted source: {name}")
     target = NODE / name
+    if not source.is_file():
+        if source.exists():
+            raise RuntimeError(f"Unsupported source: {name}")
+        if target.is_file():
+            target.unlink()
+        manifest[name] = None
+        continue
     target.parent.mkdir(parents=True, exist_ok=True)
     if not target.is_file() or target.read_bytes() != source.read_bytes():
         shutil.copyfile(source, target)
@@ -68,5 +76,5 @@ link.parent.mkdir(exist_ok=True)
 if not link.exists():
     link.symlink_to(ART, target_is_directory=True)
 assert link.is_symlink() and link.resolve() == ART
-(ART / "node-build-sources.json").write_text(json.dumps({"base": revision, "files": manifest}, indent=2) + "\n")
+(ART / "node-build-sources.json").write_text(json.dumps({"base": build_revision, "sourceRevision": revision, "files": manifest}, indent=2) + "\n")
 print(NODE)

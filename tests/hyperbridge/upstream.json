@@ -1,0 +1,29 @@
+{
+  "hyperbridge": {
+    "directory": "upstream",
+    "url": "https://github.com/polytope-labs/hyperbridge.git",
+    "revision": "d55ef3d077f9d3cb1549b19a2b6a2460512e00c6",
+    "sha256": {
+      "evm/src/consensus/SP1Beefy.sol": "862f586ec57e5fbc88f6a1f2c1c57119e9ee04b3ace2898529988425aef5f58b",
+      "evm/src/consensus/Codec.sol": "b17306f3d5ef420ec63a158e1f81e04fc79beceb087cea452d31cbba1379be67",
+      "evm/src/consensus/Types.sol": "ab4561120cada22b1f69c223055f85b176bc8655dd695afd788ec083e3c4cc09",
+      "sdk/packages/core/contracts/interfaces/IConsensusV2.sol": "fe2fb9fad51e79d960ced964e2d71eb0720efb28ff899e63e00c09404a36b7be"
+    }
+  },
+  "sp1-beefy": {
+    "directory": "sp1-beefy",
+    "url": "https://github.com/polytope-labs/sp1-beefy.git",
+    "revision": "35e6cdd6a5f5eded9241fb0dfd49b1def7ac99a2",
+    "sha256": {
+      "program/src/main.rs": "4e1fd57d23bde2f2b10b39dec98918570609895bbfbb4e98881af7f1a59845e2",
+      "primitives/src/lib.rs": "7adff8f8a9f3318f10250e3e0fb423fd6174aca414827ca5e922e422cc8dc83c",
+      "elf/sp1-beefy-program": "cc74b11f48a28a3c8a730f4aa6c9ee865bc474144df02b58f40c3c5f8cfa02c3"
+    }
+  },
+  "sp1-contracts": {
+    "directory": "../snowbridge/sp1-contracts",
+    "url": "https://github.com/succinctlabs/sp1-contracts.git",
+    "revision": "d3629729c3216eb51bd4859d027a8eb729399fa4",
+    "sha256": {}
+  }
+}
