@@ -55,7 +55,6 @@ for tx in broadcast["transactions"]:
     assert receipt is not None and int(receipt["status"], 16) == 1, tx["hash"]
     receipts.append(receipt)
 
-# Derive event selectors using the deployed ABI's signatures through web3_sha3.
 def selector(signature):
     return rpc("web3_sha3", ["0x" + signature.encode().hex()])
 

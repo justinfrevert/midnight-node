@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
 	let pk = client.setup(elf.clone()).await?;
 	let started = Instant::now();
 	let mut results = Vec::new();
-	// Both witnesses use the SAME actual signed commitment and independently verified MMR proofs.
+	// Both witnesses share one signed commitment and have independently verified MMR proofs.
 	let kinds = if mode == "prove-tip" { vec!["tip"] } else { vec!["tip", "historical"] };
 	for kind in kinds {
 		let leaf = &fixture[kind];
